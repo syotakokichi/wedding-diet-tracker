@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Target, Bike } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Bike } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, doc, setDoc, getDocs, query, orderBy } from 'firebase/firestore';
 import DailyRecordModal from './components/DailyRecordModal';
@@ -89,7 +89,7 @@ const DietTracker = () => {
     const dateStr = formatDate(date);
     const record = records[dateStr];
 
-    let classes = 'p-1 sm:p-2 h-16 sm:h-24 border border-gray-200 cursor-pointer transition-all hover:bg-gray-50 relative';
+    let classes = 'p-1 sm:p-2 h-20 sm:h-28 border border-gray-200 cursor-pointer transition-all hover:bg-gray-50 relative';
 
     // 体重の前日比較で色付け
     if (record && record.weight) {
@@ -189,11 +189,9 @@ const DietTracker = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-2 sm:p-4">
+    <div className="max-w-6xl mx-auto p-3 sm:p-4">
       {/* タイトル */}
-      <div className="text-center mb-6">
-        <div className="inline-flex items-center justify-center p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-full mb-3">
-        </div>
+      <div className="text-center mb-4">
         <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
           結婚式ダイエットトラッカー
         </h1>
@@ -226,7 +224,7 @@ const DietTracker = () => {
       </div>
 
       {/* カレンダーナビゲーション */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <button
           onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
           className="p-2 hover:bg-gray-100 rounded"
@@ -292,14 +290,14 @@ const DietTracker = () => {
                               </div>
                               {targetPaceWeight && (
                                 <div className="text-gray-400 text-xs">
-                                  (目標{targetPaceWeight})
+                                  {targetPaceWeight}kg
                                 </div>
                               )}
                             </>
                           ) : (
                             targetPaceWeight && (
                               <div className="text-gray-400 text-xs">
-                                目標{targetPaceWeight}kg
+                                {targetPaceWeight}kg
                               </div>
                             )
                           )}
