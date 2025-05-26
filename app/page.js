@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Target, Calendar, Check, Minus, Bike } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db } from '../lib/firebase';
 import { collection, doc, setDoc, getDocs, query, orderBy } from 'firebase/firestore';
 
 const DietTracker = () => {
