@@ -1,33 +1,20 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Target, Calendar, Check, Minus, Bike } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Target, Bike } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, doc, setDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import DailyRecordModal from './components/DailyRecordModal';
+import { habitCategories, initialGoals, START_DATE, END_DATE } from './constants/habitCategories';
+import { formatDate, generateCalendarDays, getTargetPaceWeight, getPointsCount } from './utils/helpers';
 
 const DietTracker = () => {
-  // 開始日と終了日の設定
-  const START_DATE = new Date('2025-05-26');
-  const END_DATE = new Date('2025-12-11');
-  
-  // 初期目標データ
-  const initialGoals = {
-    startWeight: 82,
-    targetWeight: 68,
-    height: 174,
-    weeklyFeelcycle: 3,
-    dailyGoals: {
-      breakfast: ['スープ', '卵orヨーグルト'],
-      dinner: ['タンパク質強化', 'スープ追加'],
-      nightRoutine: ['ストレッチ', '読書']
-    }
-  };
 
   // State管理
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [records, setRecords] = useState({});
-  const [goals, setGoals] = useState(initialGoals);
+  const [goals] = useState(initialGoals);
   const [showDailyModal, setShowDailyModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -41,19 +28,34 @@ const DietTracker = () => {
       const recordsMap = {};
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        recordsMap[data.date] = {
-          weight: data.weight,
-          sleep: data.sleep,
-          breakfastSoup: data.breakfastSoup,
-          breakfastProtein: data.breakfastProtein,
-          dinnerProtein: data.dinnerProtein,
-          dinnerSoup: data.dinnerSoup,
-          nightStretch: data.nightStretch,
-          nightReading: data.nightReading,
-          feelcycle: data.feelcycle,
-          otherExercise: data.otherExercise,
-          memo: data.memo
-        };
+        // 新旧両方のデータ形式に対応
+        if (data.habits) {
+          // 新形式
+          recordsMap[data.date] = {
+            weight: data.weight,
+            habits: data.habits,
+            feelcycle: data.feelcycle,
+            otherExercise: data.otherExercise,
+            memo: data.memo
+          };
+        } else {
+          // 旧形式を新形式に変換
+          const habits = { breakfast: [], meal: [], lifestyle: [] };
+          if (data.breakfastSoup) habits.breakfast.push('soup');
+          if (data.breakfastProtein) habits.breakfast.push('protein');
+          if (data.dinnerProtein) habits.meal.push('portion');
+          if (data.dinnerSoup) habits.meal.push('noSnack');
+          if (data.nightStretch) habits.lifestyle.push('sleep7h');
+          if (data.nightReading) habits.lifestyle.push('lessPhone');
+          
+          recordsMap[data.date] = {
+            weight: data.weight,
+            habits: habits,
+            feelcycle: data.feelcycle,
+            otherExercise: data.otherExercise,
+            memo: data.memo
+          };
+        }
       });
 
       setRecords(recordsMap);
@@ -69,40 +71,6 @@ const DietTracker = () => {
     loadRecords();
   }, []);
 
-  // 日付のフォーマット
-  const formatDate = (date) => {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
-
-  // 月の日数を取得
-  const getDaysInMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  // 月の最初の曜日を取得（月曜日始まり）
-  const getFirstDayOfMonth = (date) => {
-    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-    return firstDay === 0 ? 6 : firstDay - 1;
-  };
-
-  // カレンダーの日付配列を生成
-  const generateCalendarDays = () => {
-    const daysInMonth = getDaysInMonth(currentDate);
-    const firstDay = getFirstDayOfMonth(currentDate);
-    const days = [];
-
-    // 前月の日付
-    for (let i = 0; i < firstDay; i++) {
-      days.push(null);
-    }
-
-    // 当月の日付
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i);
-    }
-
-    return days;
-  };
 
   // 前日の体重を取得
   const getPreviousDayWeight = (dateStr) => {
@@ -112,19 +80,6 @@ const DietTracker = () => {
     return records[prevDateStr]?.weight || null;
   };
 
-  // チェック項目の達成数を計算
-  const getCheckCount = (record) => {
-    if (!record) return { completed: 0, total: 6 };
-    
-    let completed = 0;
-    const checkItems = ['breakfastSoup', 'breakfastProtein', 'dinnerProtein', 'dinnerSoup', 'nightStretch', 'nightReading'];
-    
-    checkItems.forEach(item => {
-      if (record[item] === true) completed++;
-    });
-    
-    return { completed, total: 6 };
-  };
 
   // 日付セルのクラス名を取得
   const getDayCellClass = (day) => {
@@ -166,13 +121,7 @@ const DietTracker = () => {
       const recordData = {
         date: dateStr,
         weight: data.weight ? parseFloat(data.weight) : null,
-        sleep: data.sleep ? parseFloat(data.sleep) : null,
-        breakfastSoup: data.breakfastSoup || false,
-        breakfastProtein: data.breakfastProtein || false,
-        dinnerProtein: data.dinnerProtein || false,
-        dinnerSoup: data.dinnerSoup || false,
-        nightStretch: data.nightStretch || false,
-        nightReading: data.nightReading || false,
+        habits: data.habits || { breakfast: [], meal: [], lifestyle: [] },
         feelcycle: data.feelcycle || false,
         otherExercise: data.otherExercise || '',
         memo: data.memo || '',
@@ -194,6 +143,7 @@ const DietTracker = () => {
       alert('保存に失敗しました。もう一度お試しください。');
     }
   };
+
 
   // 進捗計算
   const calculateProgress = () => {
@@ -227,194 +177,6 @@ const DietTracker = () => {
     };
   };
 
-  const DailyRecordModal = () => {
-    const dateStr = formatDate(selectedDate);
-    const existingRecord = records[dateStr] || {};
-    
-    const [formData, setFormData] = useState({
-      weight: existingRecord.weight || '',
-      sleep: existingRecord.sleep || '',
-      breakfastSoup: existingRecord.breakfastSoup || null,
-      breakfastProtein: existingRecord.breakfastProtein || null,
-      dinnerProtein: existingRecord.dinnerProtein || null,
-      dinnerSoup: existingRecord.dinnerSoup || null,
-      nightStretch: existingRecord.nightStretch || null,
-      nightReading: existingRecord.nightReading || null,
-      feelcycle: existingRecord.feelcycle || false,
-      otherExercise: existingRecord.otherExercise || '',
-      memo: existingRecord.memo || ''
-    });
-
-    const toggleCheck = (field) => {
-      setFormData(prev => ({
-        ...prev,
-        [field]: prev[field] === true ? null : true
-      }));
-    };
-
-    const getCheckIcon = (value) => {
-      if (value === true) return <Check className="w-5 h-5 text-green-600" />;
-      return <Minus className="w-5 h-5 text-gray-400" />;
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
-        <div className="min-h-screen px-4 py-4 flex items-start justify-center">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full my-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 rounded-t-lg">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                {selectedDate.toLocaleDateString('ja-JP')}の記録
-              </h3>
-            </div>
-            <div className="p-4">
-
-            <div className="space-y-4">
-              {/* 基本項目 */}
-              <div>
-                <label className="block text-sm font-medium mb-1">体重 (kg)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.weight}
-                  onChange={(e) => setFormData({...formData, weight: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-md text-base"
-                  placeholder="82.0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">睡眠時間 (時間)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={formData.sleep}
-                  onChange={(e) => setFormData({...formData, sleep: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-md text-base"
-                  placeholder="7.5"
-                />
-              </div>
-
-              {/* 朝食改善 */}
-              <div>
-                <h4 className="font-medium mb-2">朝食改善</h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => toggleCheck('breakfastSoup')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>スープ</span>
-                    {getCheckIcon(formData.breakfastSoup)}
-                  </button>
-                  <button
-                    onClick={() => toggleCheck('breakfastProtein')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>卵orヨーグルト</span>
-                    {getCheckIcon(formData.breakfastProtein)}
-                  </button>
-                </div>
-              </div>
-
-              {/* 夕食改善 */}
-              <div>
-                <h4 className="font-medium mb-2">夕食改善</h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => toggleCheck('dinnerProtein')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>タンパク質強化</span>
-                    {getCheckIcon(formData.dinnerProtein)}
-                  </button>
-                  <button
-                    onClick={() => toggleCheck('dinnerSoup')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>スープ追加</span>
-                    {getCheckIcon(formData.dinnerSoup)}
-                  </button>
-                </div>
-              </div>
-
-              {/* 夜習慣 */}
-              <div>
-                <h4 className="font-medium mb-2">夜習慣</h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => toggleCheck('nightStretch')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>ストレッチ</span>
-                    {getCheckIcon(formData.nightStretch)}
-                  </button>
-                  <button
-                    onClick={() => toggleCheck('nightReading')}
-                    className="flex items-center justify-between w-full p-3 border rounded hover:bg-gray-50"
-                  >
-                    <span>読書</span>
-                    {getCheckIcon(formData.nightReading)}
-                  </button>
-                </div>
-              </div>
-
-              {/* 運動 */}
-              <div>
-                <h4 className="font-medium mb-2">運動</h4>
-                <label className="flex items-center gap-2 p-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.feelcycle}
-                    onChange={(e) => setFormData({...formData, feelcycle: e.target.checked})}
-                    className="w-5 h-5"
-                  />
-                  <span>feelcycle</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.otherExercise}
-                  onChange={(e) => setFormData({...formData, otherExercise: e.target.value})}
-                  className="w-full mt-2 px-3 py-2 border rounded-md text-base"
-                  placeholder="その他の運動（散歩、階段など）"
-                />
-              </div>
-
-              {/* メモ */}
-              <div>
-                <label className="block text-sm font-medium mb-1">メモ</label>
-                <textarea
-                  value={formData.memo}
-                  onChange={(e) => setFormData({...formData, memo: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-md text-base"
-                  rows="3"
-                  placeholder="夜食：我慢できた！"
-                />
-              </div>
-            </div>
-
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-lg">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => saveDailyRecord(formData)}
-                  className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-                >
-                  保存
-                </button>
-                <button
-                  onClick={() => setShowDailyModal(false)}
-                  className="flex-1 bg-gray-200 px-4 py-2 rounded-md hover:bg-gray-300"
-                >
-                  キャンセル
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const progress = calculateProgress();
 
@@ -428,48 +190,36 @@ const DietTracker = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-2 sm:p-4">
-      {/* ヘッダー */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold mb-4 flex items-center gap-2">
-          <Target className="w-5 sm:w-6 h-5 sm:h-6" />
+      {/* タイトル */}
+      <div className="text-center mb-6">
+        <div className="inline-flex items-center justify-center p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-full mb-3">
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
           結婚式ダイエットトラッカー
         </h1>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div>
-            <p className="text-xs sm:text-sm opacity-80">目標</p>
-            <p className="text-lg sm:text-xl font-bold">{goals.startWeight}kg → {goals.targetWeight}kg</p>
-            <p className="text-xs sm:text-sm opacity-80">（-{goals.startWeight - goals.targetWeight}kg）</p>
-          </div>
-          
-          {progress && (
-            <>
-              <div>
-                <p className="text-xs sm:text-sm opacity-80">現在の体重</p>
-                <p className="text-lg sm:text-xl font-bold">{progress.latestWeight}kg</p>
-                <p className="text-xs sm:text-sm opacity-80">（-{progress.weightLost.toFixed(1)}kg）</p>
-              </div>
-              
-              <div>
-                <p className="text-xs sm:text-sm opacity-80">残り日数</p>
-                <p className="text-lg sm:text-xl font-bold">{progress.daysRemaining}日</p>
-                <p className="text-xs sm:text-sm opacity-80">（{progress.elapsedDays}/{progress.totalDays}日経過）</p>
-              </div>
-            </>
-          )}
-        </div>
+        <p className="text-sm text-gray-600 mt-2">2025.12.11まで、理想の体型へ</p>
+      </div>
 
+      {/* ヘッダー */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
+        <div>
+          <p className="text-xs sm:text-sm opacity-80">目標</p>
+          <p className="text-lg sm:text-xl font-bold">{goals.startWeight}kg → {goals.targetWeight}kg</p>
+          <p className="text-xs sm:text-sm opacity-80">（-{goals.startWeight - goals.targetWeight}kg）</p>
+        </div>
+        
         {progress && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs sm:text-sm mb-1">
-              <span>進捗</span>
-              <span>{progress.progressPercent.toFixed(1)}%</span>
+          <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 sm:gap-4 mt-3">
+            <div>
+              <p className="text-xs sm:text-sm opacity-80">現在の体重</p>
+              <p className="text-lg sm:text-xl font-bold">{progress.latestWeight}kg</p>
+              <p className="text-xs sm:text-sm opacity-80">（-{progress.weightLost.toFixed(1)}kg）</p>
             </div>
-            <div className="w-full bg-white bg-opacity-30 rounded-full h-2">
-              <div 
-                className="bg-white rounded-full h-2 transition-all"
-                style={{ width: `${progress.progressPercent}%` }}
-              />
+            
+            <div>
+              <p className="text-xs sm:text-sm opacity-80">残り日数</p>
+              <p className="text-lg sm:text-xl font-bold">{progress.daysRemaining}日</p>
+              <p className="text-xs sm:text-sm opacity-80">（{progress.elapsedDays}/{progress.totalDays}日経過）</p>
             </div>
           </div>
         )}
@@ -507,7 +257,7 @@ const DietTracker = () => {
         </div>
         
         <div className="grid grid-cols-7 gap-1">
-          {generateCalendarDays().map((day, index) => (
+          {generateCalendarDays(currentDate).map((day, index) => (
             <div
               key={index}
               className={day ? getDayCellClass(day) : ''}
@@ -521,33 +271,53 @@ const DietTracker = () => {
               {day && (
                 <>
                   <div className="font-medium text-xs sm:text-sm mb-0 sm:mb-1">{day}</div>
-                  {records[formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))] && (
-                    <>
-                      {records[formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))].feelcycle && (
-                        <div className="absolute top-1 right-1">
-                          <Bike className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                        </div>
-                      )}
-                      <div className="text-xs space-y-1">
-                        {records[formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))].weight && (
-                          <div className="text-blue-600 font-medium text-xs">
-                            {records[formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))].weight}kg
+                  {(() => {
+                    const currentDateObj = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                    const dateStr = formatDate(currentDateObj);
+                    const record = records[dateStr];
+                    const targetPaceWeight = getTargetPaceWeight(currentDateObj, goals);
+                    
+                    return (
+                      <>
+                        {record?.feelcycle && (
+                          <div className="absolute top-1 right-1">
+                            <Bike className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
                           </div>
                         )}
-                        {(() => {
-                          const checkData = getCheckCount(records[formatDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))]);
-                          if (checkData.completed > 0) {
-                            return (
-                              <div className="text-xs text-gray-600">
-                                {checkData.completed}/{checkData.total}
+                        <div className="text-xs space-y-0">
+                          {record?.weight ? (
+                            <>
+                              <div className="text-blue-600 font-medium text-xs">
+                                {record.weight}kg
                               </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    </>
-                  )}
+                              {targetPaceWeight && (
+                                <div className="text-gray-400 text-xs">
+                                  (目標{targetPaceWeight})
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            targetPaceWeight && (
+                              <div className="text-gray-400 text-xs">
+                                目標{targetPaceWeight}kg
+                              </div>
+                            )
+                          )}
+                          {(() => {
+                            const pointsData = getPointsCount(record);
+                            if (pointsData.points > 0) {
+                              return (
+                                <div className="text-xs text-gray-600">
+                                  {pointsData.points}pt
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -576,7 +346,16 @@ const DietTracker = () => {
       </div>
 
       {/* モーダル */}
-      {showDailyModal && <DailyRecordModal />}
+      {showDailyModal && (
+        <DailyRecordModal
+          selectedDate={selectedDate}
+          existingRecord={records[formatDate(selectedDate)] || {}}
+          targetPaceWeight={getTargetPaceWeight(selectedDate, goals)}
+          habitCategories={habitCategories}
+          onSave={saveDailyRecord}
+          onClose={() => setShowDailyModal(false)}
+        />
+      )}
     </div>
   );
 };
